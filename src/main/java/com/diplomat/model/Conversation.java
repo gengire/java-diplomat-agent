@@ -32,10 +32,12 @@ public class Conversation {
 
     @Column(nullable = false)
     @Builder.Default
+    @org.hibernate.annotations.ColumnDefault("5")
     private int interactionLevelA = 5; // 1=silent, 10=very active (Person A's preference)
 
     @Column(nullable = false)
     @Builder.Default
+    @org.hibernate.annotations.ColumnDefault("5")
     private int interactionLevelB = 5; // 1=silent, 10=very active (Person B's preference)
 
     @OneToMany(mappedBy = "conversation", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
