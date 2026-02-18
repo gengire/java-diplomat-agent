@@ -1,0 +1,24 @@
+# Compiled
+target/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database
+*.db
+
+# Env
+.env
+*.env
+
+# Logs
+*.log
+logs/
