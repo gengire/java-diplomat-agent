@@ -79,7 +79,7 @@ public class ConversationService {
     }
 
     /**
-     * Save a diplomat message (with optional fallacy type).
+     * Save a Diplomat message (with optional fallacy type).
      */
     @Transactional
     public Message saveDiplomatMessage(String sessionCode, String content, String messageType, String fallacyType) {
@@ -125,5 +125,26 @@ public class ConversationService {
                 .orElseThrow(() -> new RuntimeException("Session not found: " + sessionCode));
         conv.setMode(mode);
         conversationRepository.save(conv);
+    }
+
+    /**
+     * Set the interaction level (1-10) for a specific participant.
+     */
+    @Transactional
+    public Conversation setInteractionLevel(String sessionCode, String participant, int level) {
+        Conversation conv = conversationRepository.findBySessionCode(sessionCode)
+                .orElseThrow(() -> new RuntimeException("Session not found: " + sessionCode));
+
+        int clamped = Math.max(1, Math.min(10, level));
+
+        if (participant.equals(conv.getParticipantA())) {
+            conv.setInteractionLevelA(clamped);
+        } else if (participant.equals(conv.getParticipantB())) {
+            conv.setInteractionLevelB(clamped);
+        } else {
+            throw new RuntimeException("Participant not found in session: " + participant);
+        }
+
+        return conversationRepository.save(conv);
     }
 }

@@ -60,7 +60,9 @@ public class ConversationController {
                 "participantA", conv.getParticipantA(),
                 "participantB", conv.getParticipantB() != null ? conv.getParticipantB() : "",
                 "status", conv.getStatus(),
-                "mode", conv.getMode()
+                "mode", conv.getMode(),
+                "interactionLevelA", conv.getInteractionLevelA(),
+                "interactionLevelB", conv.getInteractionLevelB()
         ));
     }
 
@@ -90,6 +92,23 @@ public class ConversationController {
         DiplomatResponse response = diplomatService.generateDebrief(sessionCode);
         conversationService.saveDiplomatMessage(sessionCode, response.getContent(), "SUMMARY", null);
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Set interaction level for a participant.
+     */
+    @PostMapping("/{sessionCode}/interaction-level")
+    public ResponseEntity<Map<String, Object>> setInteractionLevel(
+            @PathVariable String sessionCode, @RequestBody Map<String, Object> body) {
+        String participant = (String) body.get("participant");
+        int level = ((Number) body.get("level")).intValue();
+        Conversation conv = conversationService.setInteractionLevel(sessionCode, participant, level);
+        return ResponseEntity.ok(Map.of(
+                "participant", participant,
+                "level", level,
+                "interactionLevelA", conv.getInteractionLevelA(),
+                "interactionLevelB", conv.getInteractionLevelB()
+        ));
     }
 
     /**

@@ -23,7 +23,7 @@ public class ChatWebSocketController {
 
     /**
      * Handle incoming chat messages. Messages sent to /app/chat/{sessionCode}
-     * are broadcast to /topic/chat/{sessionCode} and then analyzed by the Diplomat.
+     * are broadcast to /topic/chat/{sessionCode} and then analyzed by The Diplomat.
      */
     @MessageMapping("/chat/{sessionCode}")
     @SendTo("/topic/chat/{sessionCode}")
@@ -33,7 +33,7 @@ public class ChatWebSocketController {
         // Persist the message
         conversationService.saveMessage(sessionCode, message.getSender(), message.getContent(), "CHAT");
 
-        // Analyze asynchronously and send diplomat response if needed
+        // Analyze asynchronously and send Diplomat's response if needed
         analyzeInBackground(sessionCode, message.getSender(), message.getContent());
 
         return message;
@@ -50,7 +50,7 @@ public class ChatWebSocketController {
         ChatMessage joinNotice = ChatMessage.builder()
                 .sessionCode(sessionCode)
                 .sender("SYSTEM")
-                .content(message.getSender() + " has joined the conversation.")
+                .content(message.getSender() + " has joined the conversation. Welcome! I'm The Diplomat, your communication helper. I'll be here if you need me. \uD83D\uDC4B")
                 .type("JOIN")
                 .build();
 
@@ -58,7 +58,7 @@ public class ChatWebSocketController {
     }
 
     /**
-     * Handle rewind requests.
+     * Handle rewind requests — lets someone rephrase their last message.
      */
     @MessageMapping("/rewind/{sessionCode}")
     @SendTo("/topic/chat/{sessionCode}")
@@ -85,7 +85,7 @@ public class ChatWebSocketController {
         ChatMessage tempNotice = ChatMessage.builder()
                 .sessionCode(sessionCode)
                 .sender("DIPLOMAT")
-                .content("🌡️ Temperature check! On a scale of 1-10 (1 = calm, 10 = boiling), how are you each feeling right now?")
+                .content("\uD83C\uDF21\uFE0F Temperature check! On a scale of 1-10 (1 = calm, 10 = boiling), how are you each feeling right now?")
                 .type("TEMPERATURE_CHECK")
                 .build();
 
@@ -94,14 +94,63 @@ public class ChatWebSocketController {
     }
 
     /**
-     * Run diplomat analysis in a separate thread so it doesn't block the chat message delivery.
+     * Handle "Translate This" requests — The Diplomat rephrases a message to reveal underlying feelings.
+     */
+    @MessageMapping("/translate/{sessionCode}")
+    public void handleTranslate(@DestinationVariable String sessionCode, ChatMessage message) {
+        log.info("[{}] {} requested translation of: {}", sessionCode, message.getSender(), message.getContent());
+
+        Thread.startVirtualThread(() -> {
+            try {
+                // message.content = the text to translate, message.sender = who originally said it
+                DiplomatResponse response = diplomatService.translateMessage(
+                        sessionCode, message.getSender(), message.getContent());
+
+                conversationService.saveDiplomatMessage(
+                        sessionCode, response.getContent(), "TRANSLATION", null);
+
+                ChatMessage diplomatMsg = ChatMessage.builder()
+                        .sessionCode(sessionCode)
+                        .sender("DIPLOMAT")
+                        .content(response.getContent())
+                        .type("TRANSLATION")
+                        .build();
+
+                messagingTemplate.convertAndSend("/topic/chat/" + sessionCode, diplomatMsg);
+            } catch (Exception e) {
+                log.error("Translation failed for session {}: {}", sessionCode, e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Handle parking lot — park a topic for later discussion.
+     */
+    @MessageMapping("/parking-lot/{sessionCode}")
+    @SendTo("/topic/chat/{sessionCode}")
+    public ChatMessage handleParkingLot(@DestinationVariable String sessionCode, ChatMessage message) {
+        log.info("[{}] {} parked topic: {}", sessionCode, message.getSender(), message.getContent());
+
+        ChatMessage notice = ChatMessage.builder()
+                .sessionCode(sessionCode)
+                .sender("DIPLOMAT")
+                .content("\uD83C\uDD7F\uFE0F Parked for later: \"" + message.getContent() + "\" — Great idea to set that aside. You can come back to it when you're ready.")
+                .type("PARKING_LOT")
+                .build();
+
+        conversationService.saveDiplomatMessage(sessionCode, notice.getContent(), "PARKING_LOT", null);
+        return notice;
+    }
+
+    /**
+     * Run The Diplomat's analysis in a separate virtual thread so it doesn't block chat message delivery.
      */
     private void analyzeInBackground(String sessionCode, String sender, String content) {
         Thread.startVirtualThread(() -> {
             try {
                 DiplomatResponse response = diplomatService.analyzeAndRespond(sessionCode, sender, content);
                 if (response != null) {
-                    // Persist the diplomat's message
+                    // Persist the Diplomat's message
                     conversationService.saveDiplomatMessage(
                             sessionCode, response.getContent(),
                             response.getResponseType(), response.getFallacyType()

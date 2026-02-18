@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The Diplomat</title>
+    <title>The Diplomat — Communication Mediator</title>
     <style>
         :root {
             --bg-primary: #1a1a2e;
@@ -20,6 +20,12 @@
             --fallacy-border: #e94560;
             --reframe-bg: #1a3a5c;
             --reframe-border: #4a90d9;
+            --translation-bg: #2d1b4e;
+            --translation-border: #9b59b6;
+            --parking-bg: #3b3b1a;
+            --parking-border: #c9a227;
+            --reflection-bg: #1a3a3a;
+            --reflection-border: #2dd4bf;
             --success: #52b788;
         }
 
@@ -320,6 +326,63 @@
             letter-spacing: 1px;
         }
 
+        .message.translation {
+            align-self: center;
+            background: var(--translation-bg);
+            border: 1px solid var(--translation-border);
+            border-radius: 12px;
+            max-width: 90%;
+        }
+
+        .message.translation::before {
+            content: '💬 Translation';
+            display: block;
+            font-size: 0.75em;
+            font-weight: 600;
+            color: var(--translation-border);
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .message.parking-lot {
+            align-self: center;
+            background: var(--parking-bg);
+            border: 1px solid var(--parking-border);
+            border-radius: 12px;
+            max-width: 90%;
+        }
+
+        .message.parking-lot::before {
+            content: '🅿️ Parked Topic';
+            display: block;
+            font-size: 0.75em;
+            font-weight: 600;
+            color: var(--parking-border);
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .message.reflection {
+            align-self: center;
+            background: var(--reflection-bg);
+            border: 1px solid var(--reflection-border);
+            border-radius: 12px;
+            max-width: 90%;
+        }
+
+        .message.reflection::before {
+            content: '🪞 What I Heard';
+            display: block;
+            font-size: 0.75em;
+            font-weight: 600;
+            color: var(--reflection-border);
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
         .message.system {
             align-self: center;
             background: var(--system-bg);
@@ -488,6 +551,94 @@
             .message { max-width: 90%; }
             .chat-header { flex-direction: column; gap: 8px; text-align: center; }
             .header-actions { flex-wrap: wrap; justify-content: center; }
+            .interaction-slider-area { flex-direction: column; align-items: stretch; }
+        }
+
+        /* ===== INTERACTION LEVEL SLIDER ===== */
+        .interaction-slider-area {
+            background: var(--bg-secondary);
+            padding: 8px 20px;
+            border-bottom: 1px solid #334;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex-shrink: 0;
+            font-size: 0.85em;
+        }
+
+        .interaction-slider-area label {
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+
+        .interaction-slider-area input[type="range"] {
+            flex: 1;
+            max-width: 200px;
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+
+        .interaction-slider-area .level-label {
+            color: var(--accent);
+            font-weight: 600;
+            min-width: 100px;
+        }
+
+        /* ===== TRANSLATE BUTTON ON MESSAGES ===== */
+        .message.other {
+            position: relative;
+        }
+
+        .message .translate-btn {
+            display: none;
+            position: absolute;
+            top: 4px;
+            right: -36px;
+            background: var(--translation-border);
+            border: none;
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            cursor: pointer;
+            font-size: 0.8em;
+            color: white;
+            transition: all 0.2s;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .message.other:hover .translate-btn {
+            display: flex;
+        }
+
+        .message .translate-btn:hover {
+            transform: scale(1.15);
+            background: #8e44ad;
+        }
+
+        /* ===== CHAT INPUT EXTRAS ===== */
+        .chat-input-extras {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .chat-input-extras button {
+            padding: 8px 12px;
+            background: var(--bg-card);
+            border: 1px solid #445;
+            border-radius: 20px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.8em;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+
+        .chat-input-extras button:hover {
+            background: var(--accent-soft);
+            color: white;
+            border-color: var(--accent-soft);
         }
 
         /* ===== SCROLLBAR ===== */
@@ -558,10 +709,20 @@
         </div>
     </div>
 
+    <!-- Interaction Level Slider -->
+    <div class="interaction-slider-area">
+        <label for="interactionSlider">🎚️ Diplomat's involvement:</label>
+        <input type="range" id="interactionSlider" min="1" max="10" value="5" oninput="updateInteractionLevel(this.value)">
+        <span class="level-label" id="interactionLabel">5 — Balanced</span>
+    </div>
+
     <div class="chat-messages" id="chatMessages"></div>
 
     <div class="chat-input-area">
         <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off">
+        <div class="chat-input-extras">
+            <button onclick="parkTopic()" title="Park current topic for later">🅿️ Park It</button>
+        </div>
         <button onclick="sendMessage()">Send</button>
     </div>
 </div>
@@ -750,6 +911,12 @@
                 div.classList.add('fallacy');
             } else if (type === 'REFRAME') {
                 div.classList.add('reframe');
+            } else if (type === 'TRANSLATION') {
+                div.classList.add('translation');
+            } else if (type === 'PARKING_LOT') {
+                div.classList.add('parking-lot');
+            } else if (type === 'REFLECTION') {
+                div.classList.add('reflection');
             } else {
                 div.classList.add('diplomat');
             }
@@ -766,11 +933,16 @@
             div.classList.add('other');
             div.innerHTML = `<div class="sender-name">${escapeHtml(sender)}</div>
                             <div>${escapeHtml(content)}</div>
-                            <div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
+                            <div class="timestamp">${new Date().toLocaleTimeString()}</div>
+                            <button class="translate-btn" onclick="translateMessage('${escapeHtml(sender)}', '${escapeJs(content)}')" title="Ask The Diplomat to translate">💬</button>`;
         }
 
         container.appendChild(div);
         container.scrollTop = container.scrollHeight;
+    }
+
+    function escapeJs(text) {
+        return text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n');
     }
 
     function escapeHtml(text) {
@@ -912,6 +1084,67 @@
 
     function closeDebrief() {
         document.getElementById('debriefModal').classList.remove('active');
+    }
+
+    // ===== INTERACTION LEVEL =====
+
+    async function updateInteractionLevel(value) {
+        const labels = {
+            1: 'Minimal', 2: 'Minimal',
+            3: 'Low', 4: 'Low',
+            5: 'Balanced', 6: 'Balanced',
+            7: 'Active', 8: 'Active',
+            9: 'Directive', 10: 'Directive'
+        };
+        document.getElementById('interactionLabel').textContent = value + ' \u2014 ' + labels[value];
+
+        if (!sessionCode) return;
+        try {
+            await fetch(`/api/conversations/${sessionCode}/interaction-level`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ participant: myName, level: parseInt(value) })
+            });
+        } catch (e) {
+            console.error('Failed to update interaction level:', e);
+        }
+    }
+
+    // ===== TRANSLATE =====
+
+    function translateMessage(originalSender, messageContent) {
+        if (!stompClient) return;
+        stompClient.send('/app/translate/' + sessionCode, {}, JSON.stringify({
+            sessionCode: sessionCode,
+            sender: originalSender,
+            content: messageContent,
+            type: 'TRANSLATE'
+        }));
+    }
+
+    // ===== PARKING LOT =====
+
+    function parkTopic() {
+        const input = document.getElementById('messageInput');
+        const content = input.value.trim();
+        if (!content || !stompClient) {
+            const topic = prompt('What topic would you like to park for later?');
+            if (!topic) return;
+            stompClient.send('/app/parking-lot/' + sessionCode, {}, JSON.stringify({
+                sessionCode: sessionCode,
+                sender: myName,
+                content: topic,
+                type: 'PARKING_LOT'
+            }));
+            return;
+        }
+        stompClient.send('/app/parking-lot/' + sessionCode, {}, JSON.stringify({
+            sessionCode: sessionCode,
+            sender: myName,
+            content: content,
+            type: 'PARKING_LOT'
+        }));
+        input.value = '';
     }
 </script>
 </body>

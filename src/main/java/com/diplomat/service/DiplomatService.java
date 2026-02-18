@@ -40,6 +40,15 @@ public class DiplomatService {
         Conversation conv = conversationService.findBySessionCode(sessionCode)
                 .orElseThrow(() -> new RuntimeException("Session not found"));
 
+        // Use the higher of the two interaction levels (if either person wants help, they get it)
+        int effectiveLevel = Math.max(conv.getInteractionLevelA(), conv.getInteractionLevelB());
+
+        // At level 1-2, The Diplomat stays almost completely silent (only critical fallacies)
+        // At level 3-4, intervenes rarely (major issues only)
+        // At level 5-6, balanced (default)
+        // At level 7-8, active (reframes, reflections, encouragement)
+        // At level 9-10, very directive (facilitates like a mediator)
+
         // Build context
         List<Message> recentMessages = conversationService.getRecentMessages(sessionCode, CONTEXT_WINDOW);
         String conversationHistory = formatConversationHistory(recentMessages);
@@ -50,7 +59,7 @@ public class DiplomatService {
         String fullPrompt = buildAnalysisPrompt(
                 systemPrompt, constitutionText, conversationHistory,
                 conv.getParticipantA(), conv.getParticipantB(),
-                sender, newMessage, conv.getMode()
+                sender, newMessage, conv.getMode(), effectiveLevel
         );
 
         log.debug("Sending analysis prompt to LLM for session {}", sessionCode);
@@ -72,7 +81,7 @@ public class DiplomatService {
         String history = formatConversationHistory(allMessages);
 
         String prompt = """
-                You are the Diplomat, a communication mediator. Provide a brief, constructive debrief of this conversation.
+                You are The Diplomat, a communication mediator. Provide a brief, constructive debrief of this conversation.
                 
                 Include:
                 1. What went well — positive communication moments
@@ -111,7 +120,11 @@ public class DiplomatService {
     public String suggestConstitutionImprovement(String currentConstitution, String request) {
         String prompt = """
                 You are helping a couple create their Communication Constitution — a set of agreed-upon rules
-                for how they communicate during difficult conversations.
+                for how they communicate during difficult conversations. You are The Diplomat.
+                
+                Be directive and proactive — guide them toward best practices. If the current constitution
+                is missing important elements, proactively suggest additions. Make it feel collaborative,
+                not imposed.
                 
                 Current constitution:
                 %s
@@ -130,7 +143,16 @@ public class DiplomatService {
 
     private String buildAnalysisPrompt(String systemPrompt, String constitution,
                                         String history, String participantA, String participantB,
-                                        String sender, String newMessage, String mode) {
+                                        String sender, String newMessage, String mode, int interactionLevel) {
+        String levelGuidance = switch (interactionLevel) {
+            case 1, 2 -> "INTERACTION LEVEL: MINIMAL (" + interactionLevel + "/10). Stay almost completely silent. Only intervene for serious fallacies or personal attacks. Let them work it out.";
+            case 3, 4 -> "INTERACTION LEVEL: LOW (" + interactionLevel + "/10). Intervene sparingly — only for clear fallacies, constitution violations, or sharp escalation. No reframes or observations unless critical.";
+            case 5, 6 -> "INTERACTION LEVEL: BALANCED (" + interactionLevel + "/10). Intervene when genuinely helpful — fallacies, escalation, good reframing opportunities. Don't comment on every message.";
+            case 7, 8 -> "INTERACTION LEVEL: ACTIVE (" + interactionLevel + "/10). Be more engaged — offer reflections ('What I heard you say is...'), reframes, encouragement. Actively facilitate the discussion. Call out smaller issues too.";
+            case 9, 10 -> "INTERACTION LEVEL: VERY DIRECTIVE (" + interactionLevel + "/10). Actively mediate like a counselor. Summarize each person's points. Ask clarifying questions. Guide the conversation structure. Suggest next topics. Offer 'What I Heard' reflections frequently.";
+            default -> "INTERACTION LEVEL: BALANCED (5/10).";
+        };
+
         return """
                 %s
                 
@@ -144,6 +166,8 @@ public class DiplomatService {
                 === CONVERSATION MODE ===
                 %s
                 
+                === %s ===
+                
                 === RECENT CONVERSATION ===
                 %s
                 
@@ -154,7 +178,7 @@ public class DiplomatService {
                 Analyze the new message in context. Decide if you should intervene.
                 
                 If you should intervene, respond with EXACTLY this format:
-                [TYPE: OBSERVATION|REFRAME|FALLACY_ALERT|TEMPERATURE_CHECK|CONSTITUTION_REMINDER]
+                [TYPE: OBSERVATION|REFRAME|FALLACY_ALERT|TEMPERATURE_CHECK|CONSTITUTION_REMINDER|REFLECTION|APPRECIATION_PROMPT]
                 [FALLACY: name_of_fallacy or NONE]
                 [RESPONSE: your message to the participants]
                 
@@ -167,12 +191,14 @@ public class DiplomatService {
                 - Constitution rule violations
                 - Statements that could be reframed more constructively
                 - One person dominating or the other withdrawing
+                - Opportunities for positive reinforcement
+                - Moments where summarizing what someone said would help ("What I heard you say is...")
                 
-                Do NOT intervene on every message. Only when it genuinely helps.
-                In FREE_TALK mode, intervene less. In GUIDED mode, facilitate more actively.
-                Be warm, brief, and non-judgmental. Never take sides.
+                Adjust your intervention frequency based on the interaction level above.
+                In FREE_TALK mode, lean toward observing. In GUIDED mode, actively facilitate and structure.
+                Be warm, brief, and non-judgmental. Never take sides. You are The Diplomat.
                 """.formatted(systemPrompt, constitution, participantA, participantB,
-                mode, history, sender, newMessage);
+                mode, levelGuidance, history, sender, newMessage);
     }
 
     private DiplomatResponse parseResponse(String raw) {
@@ -243,6 +269,46 @@ public class DiplomatService {
                 You are The Diplomat — an AI communication mediator helping two people have more productive conversations.
                 You are warm, neutral, and insightful. You never take sides.
                 Your job is to observe, translate, and gently intervene when communication breaks down.
+                You are directive about establishing good communication practices and the constitution.
                 """;
+    }
+
+    /**
+     * Translate a message from one person into what they likely meant underneath.
+     */
+    public DiplomatResponse translateMessage(String sessionCode, String originalSender, String messageContent) {
+        String prompt = """
+                You are The Diplomat, a relationship translator. Reframe this statement to reveal the underlying
+                feeling and need, without losing the speaker's intent.
+                
+                %s said: "%s"
+                
+                Provide a brief, warm translation that:
+                1. Removes blame language
+                2. Expresses the underlying feeling ("I feel...")
+                3. States the underlying need ("I need...")
+                4. Keeps it natural and conversational
+                
+                Respond with ONLY the translated version, like:
+                "What [name] might be trying to say is: ..."
+                """.formatted(originalSender, messageContent);
+
+        try {
+            String response = chatModel.generate(prompt);
+            return DiplomatResponse.builder()
+                    .sender(DIPLOMAT_SENDER)
+                    .content(response)
+                    .responseType("TRANSLATION")
+                    .timestamp(LocalDateTime.now())
+                    .build();
+        } catch (Exception e) {
+            log.error("Translation failed: {}", e.getMessage());
+            return DiplomatResponse.builder()
+                    .sender(DIPLOMAT_SENDER)
+                    .content("Sorry, I couldn't translate that right now.")
+                    .responseType("TRANSLATION")
+                    .timestamp(LocalDateTime.now())
+                    .build();
+        }
     }
 }

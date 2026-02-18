@@ -30,6 +30,14 @@ public class Conversation {
     @Column(nullable = false)
     private String mode; // FREE_TALK, GUIDED, DEBRIEF
 
+    @Column(nullable = false)
+    @Builder.Default
+    private int interactionLevelA = 5; // 1=silent, 10=very active (Person A's preference)
+
+    @Column(nullable = false)
+    @Builder.Default
+    private int interactionLevelB = 5; // 1=silent, 10=very active (Person B's preference)
+
     @OneToMany(mappedBy = "conversation", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @OrderBy("timestamp ASC")
     @Builder.Default
