@@ -143,28 +143,91 @@ public class ChatWebSocketController {
     }
 
     /**
+     * Handle private messages — a participant sends a private message to The Diplomat for coaching.
+     * Messages come in on /app/private/{sessionCode} and responses go to /topic/private/{sessionCode}/{participant}.
+     */
+    @MessageMapping("/private/{sessionCode}")
+    public void handlePrivateMessage(@DestinationVariable String sessionCode, ChatMessage message) {
+        log.info("[{}] PRIVATE from {}: {}", sessionCode, message.getSender(), message.getContent());
+
+        // Save the participant's private message
+        conversationService.saveMessage(
+                sessionCode, message.getSender(), message.getContent(), "PRIVATE", message.getSender());
+
+        // Echo back their own message so it appears in their private panel
+        ChatMessage echo = ChatMessage.builder()
+                .sessionCode(sessionCode)
+                .sender(message.getSender())
+                .content(message.getContent())
+                .type("PRIVATE")
+                .recipient(message.getSender())
+                .build();
+        messagingTemplate.convertAndSend(
+                "/topic/private/" + sessionCode + "/" + message.getSender(), echo);
+
+        // Generate private coaching response in background
+        Thread.startVirtualThread(() -> {
+            try {
+                DiplomatResponse response = diplomatService.respondToPrivateMessage(
+                        sessionCode, message.getSender(), message.getContent());
+
+                // Save the diplomat's private response
+                conversationService.saveDiplomatMessage(
+                        sessionCode, response.getContent(), "PRIVATE_COACHING",
+                        null, message.getSender());
+
+                ChatMessage diplomatMsg = ChatMessage.builder()
+                        .sessionCode(sessionCode)
+                        .sender("DIPLOMAT")
+                        .content(response.getContent())
+                        .type("PRIVATE_COACHING")
+                        .recipient(message.getSender())
+                        .build();
+
+                messagingTemplate.convertAndSend(
+                        "/topic/private/" + sessionCode + "/" + message.getSender(), diplomatMsg);
+            } catch (Exception e) {
+                log.error("Private coaching failed for session {} user {}: {}", 
+                        sessionCode, message.getSender(), e.getMessage());
+            }
+        });
+    }
+
+    /**
      * Run The Diplomat's analysis in a separate virtual thread so it doesn't block chat message delivery.
+     * If the response has a recipient set (private coaching), route to the private channel instead.
      */
     private void analyzeInBackground(String sessionCode, String sender, String content) {
         Thread.startVirtualThread(() -> {
             try {
                 DiplomatResponse response = diplomatService.analyzeAndRespond(sessionCode, sender, content);
                 if (response != null) {
-                    // Persist the Diplomat's message
+                    String recipient = response.getRecipient();
+
+                    // Persist the Diplomat's message (with recipient if private)
                     conversationService.saveDiplomatMessage(
                             sessionCode, response.getContent(),
-                            response.getResponseType(), response.getFallacyType()
+                            response.getResponseType(), response.getFallacyType(),
+                            recipient
                     );
 
-                    // Broadcast to the chat
                     ChatMessage diplomatMsg = ChatMessage.builder()
                             .sessionCode(sessionCode)
                             .sender("DIPLOMAT")
                             .content(response.getContent())
                             .type(response.getResponseType())
+                            .recipient(recipient)
                             .build();
 
-                    messagingTemplate.convertAndSend("/topic/chat/" + sessionCode, diplomatMsg);
+                    if (recipient != null) {
+                        // Route to participant's private channel
+                        messagingTemplate.convertAndSend(
+                                "/topic/private/" + sessionCode + "/" + recipient, diplomatMsg);
+                    } else {
+                        // Broadcast to the shared chat
+                        messagingTemplate.convertAndSend(
+                                "/topic/chat/" + sessionCode, diplomatMsg);
+                    }
                 }
             } catch (Exception e) {
                 log.error("Diplomat analysis failed for session {}: {}", sessionCode, e.getMessage());

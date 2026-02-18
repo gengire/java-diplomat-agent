@@ -65,6 +65,14 @@ public class ConversationService {
      */
     @Transactional
     public Message saveMessage(String sessionCode, String sender, String content, String messageType) {
+        return saveMessage(sessionCode, sender, content, messageType, null);
+    }
+
+    /**
+     * Save a message to the conversation with optional recipient for private messages.
+     */
+    @Transactional
+    public Message saveMessage(String sessionCode, String sender, String content, String messageType, String recipient) {
         Conversation conv = conversationRepository.findBySessionCode(sessionCode)
                 .orElseThrow(() -> new RuntimeException("Session not found: " + sessionCode));
 
@@ -73,6 +81,7 @@ public class ConversationService {
                 .sender(sender)
                 .content(content)
                 .messageType(messageType)
+                .recipient(recipient)
                 .timestamp(LocalDateTime.now())
                 .build();
         return messageRepository.save(message);
@@ -83,6 +92,14 @@ public class ConversationService {
      */
     @Transactional
     public Message saveDiplomatMessage(String sessionCode, String content, String messageType, String fallacyType) {
+        return saveDiplomatMessage(sessionCode, content, messageType, fallacyType, null);
+    }
+
+    /**
+     * Save a Diplomat message with optional recipient for private coaching.
+     */
+    @Transactional
+    public Message saveDiplomatMessage(String sessionCode, String content, String messageType, String fallacyType, String recipient) {
         Conversation conv = conversationRepository.findBySessionCode(sessionCode)
                 .orElseThrow(() -> new RuntimeException("Session not found: " + sessionCode));
 
@@ -92,6 +109,7 @@ public class ConversationService {
                 .content(content)
                 .messageType(messageType)
                 .fallacyType(fallacyType)
+                .recipient(recipient)
                 .timestamp(LocalDateTime.now())
                 .build();
         return messageRepository.save(message);
@@ -108,6 +126,32 @@ public class ConversationService {
 
     public List<Message> getAllMessages(String sessionCode) {
         return messageRepository.findByConversationSessionCodeOrderByTimestampAsc(sessionCode);
+    }
+
+    /**
+     * Get private coaching messages between The Diplomat and a specific participant.
+     */
+    public List<Message> getPrivateMessages(String sessionCode, String participant) {
+        return messageRepository.findByConversationSessionCodeOrderByTimestampAsc(sessionCode)
+                .stream()
+                .filter(m -> participant.equals(m.getRecipient()) || 
+                        (participant.equals(m.getSender()) && m.getRecipient() != null))
+                .toList();
+    }
+
+    /**
+     * Get recent messages for context, including only public messages and private messages
+     * visible to the specified participant (for private coaching context).
+     */
+    public List<Message> getRecentMessagesForParticipant(String sessionCode, String participant, int limit) {
+        List<Message> all = messageRepository.findByConversationSessionCodeOrderByTimestampAsc(sessionCode)
+                .stream()
+                .filter(m -> m.getRecipient() == null || 
+                        participant.equals(m.getRecipient()) || 
+                        participant.equals(m.getSender()))
+                .toList();
+        if (all.size() <= limit) return all;
+        return all.subList(all.size() - limit, all.size());
     }
 
     @Transactional

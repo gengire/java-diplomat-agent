@@ -27,6 +27,10 @@
             --reflection-bg: #1a3a3a;
             --reflection-border: #2dd4bf;
             --success: #52b788;
+            --private-bg: #1a2a1a;
+            --private-border: #4a9;
+            --coaching-bg: #0d2818;
+            --coaching-border: #52b788;
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -194,6 +198,19 @@
             display: none;
             flex-direction: column;
             height: 100vh;
+        }
+
+        .chat-body {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .chat-main {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-width: 0;
         }
 
         .chat-header {
@@ -552,6 +569,7 @@
             .chat-header { flex-direction: column; gap: 8px; text-align: center; }
             .header-actions { flex-wrap: wrap; justify-content: center; }
             .interaction-slider-area { flex-direction: column; align-items: stretch; }
+            .private-panel.open { width: 100%; min-width: 100%; position: absolute; top: 0; right: 0; bottom: 0; z-index: 50; }
         }
 
         /* ===== INTERACTION LEVEL SLIDER ===== */
@@ -641,6 +659,165 @@
             border-color: var(--accent-soft);
         }
 
+        /* ===== PRIVATE COACHING PANEL ===== */
+        .private-panel {
+            width: 0;
+            min-width: 0;
+            background: var(--bg-secondary);
+            border-left: 1px solid #334;
+            display: flex;
+            flex-direction: column;
+            transition: width 0.3s ease, min-width 0.3s ease;
+            overflow: hidden;
+        }
+
+        .private-panel.open {
+            width: 380px;
+            min-width: 380px;
+        }
+
+        .private-panel-header {
+            padding: 12px 16px;
+            background: var(--coaching-bg);
+            border-bottom: 1px solid var(--coaching-border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+
+        .private-panel-header .title {
+            font-size: 0.95em;
+            font-weight: 600;
+            color: var(--coaching-border);
+        }
+
+        .private-panel-header .close-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 1.2em;
+            padding: 0 4px;
+        }
+
+        .private-panel-header .close-btn:hover {
+            color: var(--text-primary);
+        }
+
+        .private-panel-hint {
+            padding: 12px 16px;
+            font-size: 0.8em;
+            color: var(--text-secondary);
+            background: var(--bg-primary);
+            border-bottom: 1px solid #334;
+            flex-shrink: 0;
+        }
+
+        .private-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .private-messages .message {
+            max-width: 95%;
+            font-size: 0.9em;
+        }
+
+        .private-messages .message.self {
+            align-self: flex-end;
+            background: var(--private-bg);
+            border: 1px solid var(--private-border);
+            border-bottom-right-radius: 4px;
+        }
+
+        .private-messages .message.coaching {
+            align-self: flex-start;
+            background: var(--coaching-bg);
+            border: 1px solid var(--coaching-border);
+            border-bottom-left-radius: 4px;
+        }
+
+        .private-messages .message.coaching::before {
+            content: '🕊️ The Diplomat (private)';
+            display: block;
+            font-size: 0.7em;
+            font-weight: 600;
+            color: var(--coaching-border);
+            margin-bottom: 3px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .private-input-area {
+            padding: 10px 12px;
+            background: var(--bg-primary);
+            border-top: 1px solid #334;
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .private-input-area input {
+            flex: 1;
+            padding: 10px 14px;
+            border: 1px solid #334;
+            border-radius: 20px;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            font-size: 0.9em;
+            outline: none;
+        }
+
+        .private-input-area input:focus {
+            border-color: var(--coaching-border);
+        }
+
+        .private-input-area button {
+            padding: 8px 16px;
+            background: var(--coaching-border);
+            border: none;
+            border-radius: 20px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: background 0.2s;
+        }
+
+        .private-input-area button:hover {
+            background: #3d8a6e;
+        }
+
+        /* ===== PRIVATE COACHING BADGE (toggle button) ===== */
+        .private-toggle {
+            position: relative;
+        }
+
+        .private-toggle .badge {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            background: var(--coaching-border);
+            color: white;
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            font-size: 0.7em;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+        }
+
+        .private-toggle .badge.show {
+            display: flex;
+        }
+
         /* ===== SCROLLBAR ===== */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: var(--bg-primary); }
@@ -706,24 +883,46 @@
             <button onclick="openConstitution()">📜 Constitution</button>
             <button onclick="requestDebrief()">📊 Debrief</button>
             <button onclick="toggleMode()">🔄 Mode</button>
+            <button class="private-toggle" onclick="togglePrivatePanel()">🤫 Private Coach<span class="badge" id="privateBadge">0</span></button>
         </div>
     </div>
 
     <!-- Interaction Level Slider -->
-    <div class="interaction-slider-area">
-        <label for="interactionSlider">🎚️ Diplomat's involvement:</label>
-        <input type="range" id="interactionSlider" min="1" max="10" value="5" oninput="updateInteractionLevel(this.value)">
-        <span class="level-label" id="interactionLabel">5 — Balanced</span>
-    </div>
+    <div class="chat-body">
+        <div class="chat-main">
+            <div class="interaction-slider-area">
+                <label for="interactionSlider">🎚️ Diplomat's involvement:</label>
+                <input type="range" id="interactionSlider" min="1" max="10" value="5" oninput="updateInteractionLevel(this.value)">
+                <span class="level-label" id="interactionLabel">5 — Balanced</span>
+            </div>
 
-    <div class="chat-messages" id="chatMessages"></div>
+            <div class="chat-messages" id="chatMessages"></div>
 
-    <div class="chat-input-area">
-        <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off">
-        <div class="chat-input-extras">
-            <button onclick="parkTopic()" title="Park current topic for later">🅿️ Park It</button>
+            <div class="chat-input-area">
+                <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off">
+                <div class="chat-input-extras">
+                    <button onclick="parkTopic()" title="Park current topic for later">🅿️ Park It</button>
+                </div>
+                <button onclick="sendMessage()">Send</button>
+            </div>
         </div>
-        <button onclick="sendMessage()">Send</button>
+
+        <!-- Private Coaching Panel -->
+        <div class="private-panel" id="privatePanel">
+            <div class="private-panel-header">
+                <span class="title">🤫 Private Coach</span>
+                <button class="close-btn" onclick="togglePrivatePanel()">&times;</button>
+            </div>
+            <div class="private-panel-hint">
+                This is your private channel with The Diplomat. Your partner can't see these messages. 
+                Ask for advice, reframing help, or just vent.
+            </div>
+            <div class="private-messages" id="privateMessages"></div>
+            <div class="private-input-area">
+                <input type="text" id="privateInput" placeholder="Ask The Diplomat privately..." autocomplete="off">
+                <button onclick="sendPrivateMessage()">Send</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -766,6 +965,8 @@
     let constitutionId = null;
     let currentMode = 'FREE_TALK';
     let pollingInterval = null;
+    let privatePanelOpen = false;
+    let unreadPrivateCount = 0;
 
     // ===== LOBBY ACTIONS =====
 
@@ -853,10 +1054,16 @@
         stompClient.debug = null; // silence debug logs
 
         stompClient.connect({}, function () {
-            // Subscribe to chat messages
+            // Subscribe to shared chat messages
             stompClient.subscribe('/topic/chat/' + sessionCode, function (msg) {
                 const message = JSON.parse(msg.body);
                 displayMessage(message);
+            });
+
+            // Subscribe to private coaching channel
+            stompClient.subscribe('/topic/private/' + sessionCode + '/' + myName, function (msg) {
+                const message = JSON.parse(msg.body);
+                displayPrivateMessage(message);
             });
 
             // Send join event
@@ -1145,6 +1352,78 @@
             type: 'PARKING_LOT'
         }));
         input.value = '';
+    }
+
+    // ===== PRIVATE COACHING =====
+
+    function togglePrivatePanel() {
+        const panel = document.getElementById('privatePanel');
+        privatePanelOpen = !privatePanelOpen;
+        if (privatePanelOpen) {
+            panel.classList.add('open');
+            unreadPrivateCount = 0;
+            updatePrivateBadge();
+            document.getElementById('privateInput').focus();
+        } else {
+            panel.classList.remove('open');
+        }
+    }
+
+    function sendPrivateMessage() {
+        const input = document.getElementById('privateInput');
+        const content = input.value.trim();
+        if (!content || !stompClient) return;
+
+        stompClient.send('/app/private/' + sessionCode, {}, JSON.stringify({
+            sessionCode: sessionCode,
+            sender: myName,
+            content: content,
+            type: 'PRIVATE',
+            recipient: myName
+        }));
+
+        input.value = '';
+        input.focus();
+    }
+
+    // Enter key to send private message
+    document.getElementById('privateInput').addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') sendPrivateMessage();
+    });
+
+    function displayPrivateMessage(message) {
+        const container = document.getElementById('privateMessages');
+        const div = document.createElement('div');
+        div.classList.add('message');
+
+        if (message.sender === 'DIPLOMAT') {
+            div.classList.add('coaching');
+            div.innerHTML = `<div>${escapeHtml(message.content)}</div>
+                            <div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
+        } else {
+            div.classList.add('self');
+            div.innerHTML = `<div>${escapeHtml(message.content)}</div>
+                            <div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
+        }
+
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+
+        // Update badge if panel is closed
+        if (!privatePanelOpen && message.sender === 'DIPLOMAT') {
+            unreadPrivateCount++;
+            updatePrivateBadge();
+        }
+    }
+
+    function updatePrivateBadge() {
+        const badge = document.getElementById('privateBadge');
+        if (unreadPrivateCount > 0) {
+            badge.textContent = unreadPrivateCount > 9 ? '9+' : unreadPrivateCount;
+            badge.classList.add('show');
+        } else {
+            badge.classList.remove('show');
+        }
     }
 </script>
 </body>

@@ -35,6 +35,7 @@ public class DiplomatService {
     /**
      * Analyze the latest message in context and decide whether to intervene.
      * Returns null if no intervention is needed.
+     * May return a response with a recipient set for private coaching.
      */
     public DiplomatResponse analyzeAndRespond(String sessionCode, String sender, String newMessage) {
         Conversation conv = conversationService.findBySessionCode(sessionCode)
@@ -42,12 +43,6 @@ public class DiplomatService {
 
         // Use the higher of the two interaction levels (if either person wants help, they get it)
         int effectiveLevel = Math.max(conv.getInteractionLevelA(), conv.getInteractionLevelB());
-
-        // At level 1-2, The Diplomat stays almost completely silent (only critical fallacies)
-        // At level 3-4, intervenes rarely (major issues only)
-        // At level 5-6, balanced (default)
-        // At level 7-8, active (reframes, reflections, encouragement)
-        // At level 9-10, very directive (facilitates like a mediator)
 
         // Build context
         List<Message> recentMessages = conversationService.getRecentMessages(sessionCode, CONTEXT_WINDOW);
@@ -66,10 +61,78 @@ public class DiplomatService {
 
         try {
             String response = chatModel.generate(fullPrompt);
-            return parseResponse(response);
+            return parseResponse(response, conv.getParticipantA(), conv.getParticipantB());
         } catch (Exception e) {
             log.error("LLM call failed for session {}: {}", sessionCode, e.getMessage());
             return null;
+        }
+    }
+
+    /**
+     * Respond to a private coaching message from a participant.
+     * The Diplomat acts as a personal coach, giving advice privately.
+     */
+    public DiplomatResponse respondToPrivateMessage(String sessionCode, String participant, String message) {
+        Conversation conv = conversationService.findBySessionCode(sessionCode)
+                .orElseThrow(() -> new RuntimeException("Session not found"));
+
+        // Get recent conversation context (public + this user's private messages)
+        List<Message> recentMessages = conversationService.getRecentMessagesForParticipant(
+                sessionCode, participant, CONTEXT_WINDOW);
+        String conversationHistory = formatConversationHistory(recentMessages);
+        String constitutionText = getConstitutionText(conv);
+
+        String otherParticipant = participant.equals(conv.getParticipantA())
+                ? conv.getParticipantB() : conv.getParticipantA();
+
+        String prompt = """
+                You are The Diplomat — a private communication coach. %s has sent you a PRIVATE message
+                that the other participant (%s) cannot see.
+                
+                You are now in 1-on-1 coaching mode. Be warm, direct, and helpful.
+                
+                In this private channel you can:
+                - Help them understand their own feelings and reactions
+                - Suggest better ways to phrase what they want to say
+                - Help them see their partner's perspective
+                - Give them specific scripts or phrases to try
+                - Validate their feelings while challenging unhelpful patterns
+                - Help them prepare what to say before saying it in the shared chat
+                - Be more candid than you would be publicly
+                
+                === CONSTITUTION ===
+                %s
+                
+                === RECENT CONVERSATION (includes shared + private) ===
+                %s
+                
+                === %s's PRIVATE MESSAGE TO YOU ===
+                %s
+                
+                Respond directly, warmly, and helpfully. Keep it conversational — you're their coach, not a textbook.
+                Be brief (2-4 sentences) unless they're asking for something more detailed.
+                Do NOT use bracket formatting. Just respond naturally.
+                """.formatted(participant, otherParticipant, constitutionText,
+                conversationHistory, participant, message);
+
+        try {
+            String response = chatModel.generate(prompt);
+            return DiplomatResponse.builder()
+                    .sender(DIPLOMAT_SENDER)
+                    .content(response)
+                    .responseType("PRIVATE_COACHING")
+                    .recipient(participant)
+                    .timestamp(LocalDateTime.now())
+                    .build();
+        } catch (Exception e) {
+            log.error("Private coaching failed for {}: {}", participant, e.getMessage());
+            return DiplomatResponse.builder()
+                    .sender(DIPLOMAT_SENDER)
+                    .content("Sorry, I'm having trouble responding right now. Try again in a moment.")
+                    .responseType("PRIVATE_COACHING")
+                    .recipient(participant)
+                    .timestamp(LocalDateTime.now())
+                    .build();
         }
     }
 
@@ -180,7 +243,16 @@ public class DiplomatService {
                 If you should intervene, respond with EXACTLY this format:
                 [TYPE: OBSERVATION|REFRAME|FALLACY_ALERT|TEMPERATURE_CHECK|CONSTITUTION_REMINDER|REFLECTION|APPRECIATION_PROMPT]
                 [FALLACY: name_of_fallacy or NONE]
+                [VISIBILITY: PUBLIC or PRIVATE_TO_%s or PRIVATE_TO_%s]
                 [RESPONSE: your message to the participants]
+                
+                VISIBILITY guidance:
+                - Use PUBLIC for most interventions (both people should see it)
+                - Use PRIVATE_TO_name when you want to privately coach just one person:
+                  * Suggesting a better way to phrase something BEFORE they say it
+                  * Pointing out their own pattern without embarrassing them
+                  * Offering encouragement or validation privately
+                  * Giving them a heads-up about how their message might land
                 
                 If no intervention is needed, respond with exactly:
                 [NO_INTERVENTION]
@@ -198,22 +270,24 @@ public class DiplomatService {
                 In FREE_TALK mode, lean toward observing. In GUIDED mode, actively facilitate and structure.
                 Be warm, brief, and non-judgmental. Never take sides. You are The Diplomat.
                 """.formatted(systemPrompt, constitution, participantA, participantB,
-                mode, levelGuidance, history, sender, newMessage);
+                mode, levelGuidance, history, sender, newMessage, participantA, participantB);
     }
 
-    private DiplomatResponse parseResponse(String raw) {
+    private DiplomatResponse parseResponse(String raw, String participantA, String participantB) {
         if (raw == null || raw.contains("[NO_INTERVENTION]")) {
             return null;
         }
 
         String type = extractBracketValue(raw, "TYPE");
         String fallacy = extractBracketValue(raw, "FALLACY");
+        String visibility = extractBracketValue(raw, "VISIBILITY");
         String response = extractBracketValue(raw, "RESPONSE");
 
         if (response == null || response.isBlank()) {
             // Try to use the whole response if parsing failed
             response = raw.replaceAll("\\[TYPE:.*?\\]", "")
                           .replaceAll("\\[FALLACY:.*?\\]", "")
+                          .replaceAll("\\[VISIBILITY:.*?\\]", "")
                           .replaceAll("\\[RESPONSE:.*?\\]", "")
                           .trim();
             if (response.isBlank()) response = raw;
@@ -222,11 +296,27 @@ public class DiplomatService {
         if ("NONE".equalsIgnoreCase(fallacy)) fallacy = null;
         if (type == null) type = "OBSERVATION";
 
+        // Determine recipient from visibility
+        String recipient = null;
+        if (visibility != null) {
+            String vis = visibility.trim().toUpperCase();
+            if (vis.startsWith("PRIVATE_TO_")) {
+                String targetName = visibility.trim().substring("PRIVATE_TO_".length()).trim();
+                // Match against participant names (case-insensitive)
+                if (targetName.equalsIgnoreCase(participantA)) {
+                    recipient = participantA;
+                } else if (targetName.equalsIgnoreCase(participantB)) {
+                    recipient = participantB;
+                }
+            }
+        }
+
         return DiplomatResponse.builder()
                 .sender(DIPLOMAT_SENDER)
                 .content(response)
                 .responseType(type.trim())
                 .fallacyType(fallacy)
+                .recipient(recipient)
                 .timestamp(LocalDateTime.now())
                 .build();
     }

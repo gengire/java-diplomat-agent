@@ -29,6 +29,9 @@ public class Message {
     @Column
     private String fallacyType; // null unless messageType is FALLACY_ALERT
 
+    @Column
+    private String recipient; // null = public message, participant name = private to that person
+
     @Column(nullable = false)
     private LocalDateTime timestamp;
 
