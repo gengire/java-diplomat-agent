@@ -266,6 +266,16 @@ public class DiplomatService {
                 - Opportunities for positive reinforcement
                 - Moments where summarizing what someone said would help ("What I heard you say is...")
                 
+                === CONFIDENTIAL CONTEXT RULES ===
+                The conversation history may contain lines marked [CONFIDENTIAL — PRIVATE TO name].
+                These are private coaching messages between you and one participant. CRITICAL RULES:
+                - NEVER quote, paraphrase, or directly reference anything from private messages in public responses
+                - NEVER say "you told me privately" or "in our private chat" or anything that reveals the private channel exists to the other person
+                - DO use the emotional context and insights from private messages to guide your public interventions more skillfully
+                - For example: if someone privately told you they feel unheard, you can publicly suggest a reflection exercise — without revealing why
+                - If someone privately asked for help phrasing something, watch for them to try it and offer subtle encouragement
+                - Think of private context as background knowledge that makes you a better mediator, not as content to share
+                
                 Adjust your intervention frequency based on the interaction level above.
                 In FREE_TALK mode, lean toward observing. In GUIDED mode, actively facilitate and structure.
                 Be warm, brief, and non-judgmental. Never take sides. You are The Diplomat.
@@ -333,7 +343,13 @@ public class DiplomatService {
     private String formatConversationHistory(List<Message> messages) {
         if (messages.isEmpty()) return "(conversation just started)";
         return messages.stream()
-                .map(m -> "%s [%s]: %s".formatted(m.getSender(), m.getMessageType(), m.getContent()))
+                .map(m -> {
+                    if (m.getRecipient() != null) {
+                        return "[CONFIDENTIAL — PRIVATE TO %s] %s [%s]: %s".formatted(
+                                m.getRecipient(), m.getSender(), m.getMessageType(), m.getContent());
+                    }
+                    return "%s [%s]: %s".formatted(m.getSender(), m.getMessageType(), m.getContent());
+                })
                 .collect(Collectors.joining("\n"));
     }
 
